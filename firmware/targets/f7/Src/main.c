@@ -2,22 +2,29 @@
 #include <furi_hal.h>
 #include <flipper.h>
 #include <alt_boot.h>
+#include <flipper_boot_led.h>
+#include <furi_boot_hal.h>
 
 #define TAG "Main"
 
 int main(void) {
+    furi_boot_hal_init();
     // Flipper critical FURI HAL
-    furi_hal_init_critical();
+    //furi_hal_init_critical();
+    flipper_boot_led_sequence("W");
 
 #ifdef FURI_RAM_EXEC
     if(false) {
 #else
     if(furi_hal_bootloader_get_mode() == FuriHalBootloaderModeDFU) {
         furi_hal_bootloader_set_mode(FuriHalBootloaderModeNormal);
+        //flipper_boot_led_sequence("B");
         flipper_boot_dfu_exec();
         furi_hal_power_reset();
     } else if(furi_hal_rtc_is_flag_set(FuriHalRtcFlagExecuteUpdate)) {
 #endif
+        furi_hal_init_critical();
+        //flipper_boot_led_sequence("Y");
         flipper_boot_update_exec();
         // if things go nice, we shouldn't reach this point.
         // But if we do, abandon
@@ -25,6 +32,7 @@ int main(void) {
         furi_hal_rtc_set_flag(FuriHalRtcFlagExecutePostUpdate);
         furi_hal_power_reset();
     } else {
+        furi_hal_init_critical();
         furi_hal_clock_init();
         furi_hal_console_init();
         furi_hal_rtc_init();

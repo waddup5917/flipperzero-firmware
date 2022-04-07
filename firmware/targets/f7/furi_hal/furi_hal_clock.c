@@ -26,6 +26,9 @@ void furi_hal_clock_minimal_init() {
 
     LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_SPI1);
     LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_SPI2);
+
+    // For LED indication
+    LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_I2C1);
 }
 
 void furi_hal_clock_init() {

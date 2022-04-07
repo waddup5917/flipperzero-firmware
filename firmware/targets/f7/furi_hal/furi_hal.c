@@ -69,6 +69,16 @@ void furi_hal_init() {
 }
 
 void furi_hal_init_critical() {
-    furi_hal_clock_minimal_init();
-    furi_hal_rtc_minimal_init();
+    //furi_hal_clock_minimal_init();
+    //furi_hal_rtc_minimal_init();
+
+    //furi_hal_delay_init(false);
+    //LL_RCC_SetI2CClockSource(LL_RCC_I2C1_CLKSOURCE_PCLK1);
+    //LL_APB1_GRP1_ForceReset(LL_APB1_GRP1_PERIPH_I2C1);
+
+    ////furi_hal_i2c_init();
+    //furi_hal_light_init();
+    furi_hal_clock_init();
+    furi_hal_rtc_init();
+    furi_hal_delay_init(false);
 }

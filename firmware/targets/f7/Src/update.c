@@ -2,6 +2,7 @@
 #include <furi_hal.h>
 #include <flipper.h>
 #include <alt_boot.h>
+#include <flipper_boot_led.h>
 
 #include <fatfs.h>
 #include <flipper_format/flipper_format.h>
@@ -42,6 +43,7 @@ static bool flipper_update_init() {
 
     pfs = malloc(sizeof(FATFS));
     CHECK_FRESULT(f_mount(pfs, FS_ROOT_PATH, 1));
+    flipper_boot_led_sequence("M");
     return true;
 }
 
@@ -81,6 +83,8 @@ static bool flipper_update_load_stage(const string_t work_dir, UpdateManifest* m
             break;
         }
 
+        flipper_boot_led_sequence("G");
+
         /* Point of no return. Literally
          *
          * NB: we MUST disable IRQ, otherwise handlers from flash
@@ -99,6 +103,7 @@ static bool flipper_update_load_stage(const string_t work_dir, UpdateManifest* m
 
     } while(false);
 
+    flipper_boot_led_sequence("R");
     free(img);
     return false;
 }
