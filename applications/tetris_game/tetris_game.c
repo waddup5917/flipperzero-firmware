@@ -72,6 +72,8 @@ static const Piece shapes[] = {
 typedef struct {
     bool playField[FIELD_HEIGHT][FIELD_WIDTH];
     Piece currPiece;
+    uint32_t numLines;
+    uint32_t fallSpeed;
 } TetrisState;
 
 typedef enum {
@@ -151,6 +153,8 @@ static void tetris_game_input_callback(InputEvent* input_event, osMessageQueueId
 }
 
 static void tetris_game_init_state(TetrisState* tetris_state) {
+    tetris_state->numLines = 0;
+    tetris_state->fallSpeed = 500;
     memset(tetris_state->playField, 0, sizeof(tetris_state->playField));
 
     memcpy(&tetris_state->currPiece, &shapes[rand() % 7], sizeof(tetris_state->currPiece));
@@ -268,7 +272,7 @@ static void tetris_game_update_timer_callback(osMessageQueueId_t event_queue) {
 }
 
 
-int32_t tetris_game_app(void* p) {
+int32_t tetris_game_app() {
     srand(DWT->CYCCNT);
 
     osMessageQueueId_t event_queue = osMessageQueueNew(8, sizeof(TetrisEvent), NULL);
@@ -283,6 +287,14 @@ int32_t tetris_game_app(void* p) {
         return 255;
     }
 
+    // Not doing this eventually causes issues with TimerSvc due to not sleeping/yielding enough in this task
+    TaskHandle_t timer_task = xTaskGetHandle(configTIMER_SERVICE_TASK_NAME);
+    TaskHandle_t curr_task = xTaskGetHandle("Bug Test");
+
+    uint32_t origTimerPrio = uxTaskPriorityGet(timer_task);
+    uint32_t myPrio = uxTaskPriorityGet(curr_task);
+    vTaskPrioritySet(timer_task, myPrio + 1);
+
     ViewPort* view_port = view_port_alloc();
     view_port_set_orientation(view_port, ViewPortOrientationVertical);
     view_port_draw_callback_set(view_port, tetris_game_render_callback, &state_mutex);
@@ -290,36 +302,44 @@ int32_t tetris_game_app(void* p) {
 
     osTimerId_t timer =
         osTimerNew(tetris_game_update_timer_callback, osTimerPeriodic, event_queue, NULL);
-    osTimerStart(timer, 500U);
+    osTimerStart(timer, tetris_state->fallSpeed);
 
     // Open GUI and register view_port
     Gui* gui = furi_record_open("gui");
     gui_add_view_port(gui, view_port, GuiLayerFullscreen);
 
     TetrisEvent event;
-    // Point *newShape = malloc(sizeof(Point) * 4);
+
     Piece *newPiece = malloc(sizeof(Piece));
+    uint8_t downRepeatCounter = 0;
 
     for(bool processing = true; processing;) {
-        osStatus_t event_status = osMessageQueueGet(event_queue, &event, NULL, 100);
+        osStatus_t event_status = osMessageQueueGet(event_queue, &event, NULL, 10U);
 
         TetrisState* tetris_state = (TetrisState*)acquire_mutex_block(&state_mutex);
 
         memcpy(newPiece, &tetris_state->currPiece, sizeof(tetris_state->currPiece));
         bool wasDownMove = false;
 
+        if(!furi_hal_gpio_read(&gpio_button_right)) {
+            if(downRepeatCounter > 3) {
+                for (int i = 0; i < 4; i++) {
+                   newPiece->p[i].y += 1;
+                }
+                downRepeatCounter = 0;
+                wasDownMove = true;
+            } else {
+                downRepeatCounter++;
+            }
+        }
+
         if(event_status == osOK) {
             if(event.type == EventTypeKey) {
                 if(event.input.type == InputTypePress || event.input.type == InputTypeLong || event.input.type == InputTypeRepeat) {
                     switch(event.input.key) {
                     case InputKeyUp:
-                        
                         break;
                     case InputKeyDown:
-                        for (int i = 0; i < 4; i++) {
-                            newPiece->p[i].y += 1;
-                        }
-                        wasDownMove = true;
                         break;
                     case InputKeyRight:
                         for (int i = 0; i < 4; i++) {
@@ -357,26 +377,36 @@ int32_t tetris_game_app(void* p) {
 
         if(wasDownMove) {
             if(tetris_game_piece_at_bottom(tetris_state, newPiece)) {
+                osTimerStop(timer);
                 tetris_game_render_curr_piece(tetris_state);
                 uint8_t numLines = 0;
                 uint8_t lines[] = { 0,0,0,0 };
 
                 tetris_game_check_for_lines(tetris_state, lines, &numLines);
-                for(int i = 0; i < numLines; i++) {
+                if(numLines > 0) {
+                    for(int i = 0; i < numLines; i++) {
 
-                    // zero/falsify out row
-                    for(int j = 0; j < FIELD_WIDTH; j++) {
-                        tetris_state->playField[lines[i]][j] = false;
-                    }
-                    // move all above rows down
-                    for(int k = lines[i]; k >= 0 ; k--) {
-                        for(int m = 0; m < FIELD_WIDTH; m++) {
-                            tetris_state->playField[k][m] = (k == 0) ? false : tetris_state->playField[k-1][m];
+                        // zero out row
+                        for(int j = 0; j < FIELD_WIDTH; j++) {
+                            tetris_state->playField[lines[i]][j] = false;
                         }
+                        // move all above rows down
+                        for(int k = lines[i]; k >= 0 ; k--) {
+                            for(int m = 0; m < FIELD_WIDTH; m++) {
+                                tetris_state->playField[k][m] = (k == 0) ? false : tetris_state->playField[k-1][m];
+                            }
+                        }
+                    }
+
+                    uint32_t oldNumLines = tetris_state->numLines;
+                    tetris_state->numLines += numLines;
+                    if((oldNumLines / 10) % 10 != (tetris_state->numLines / 10) % 10) {
+                        tetris_state->fallSpeed -= 50;
                     }
                 }
 
                 memcpy(&tetris_state->currPiece, &shapes[rand() % 7], sizeof(tetris_state->currPiece));
+                osTimerStart(timer, tetris_state->fallSpeed);
             }
         }
 
@@ -397,6 +427,7 @@ int32_t tetris_game_app(void* p) {
     view_port_free(view_port);
     osMessageQueueDelete(event_queue);
     delete_mutex(&state_mutex);
+    vTaskPrioritySet(timer_task, origTimerPrio);
     free(newPiece);
     free(tetris_state);
 
