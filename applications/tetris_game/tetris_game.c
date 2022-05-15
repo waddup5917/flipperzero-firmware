@@ -339,7 +339,6 @@ static void tetris_game_process_step(TetrisState* tetris_state, Piece* newPiece,
             Piece* spawnedPiece = &shapes[rand() % 7];
             if(!tetris_game_is_valid_pos(tetris_state, spawnedPiece->p)) {
                 tetris_state->gameState = GameStateGameOver;
-                // processing = false;
             } else {
                 memcpy(&tetris_state->currPiece, spawnedPiece, sizeof(tetris_state->currPiece));
                 osTimerStart(tetris_state->timer, tetris_state->fallSpeed);
